@@ -48,15 +48,6 @@ teardown_clickhouse() {
 
 run_integration_test() {
     local storage_test=$1
-    local clickhouse_version=$2
-    compose_file="docker-compose/clickhouse/docker-compose-${clickhouse_version}.yml"
-    if [ ! -f "$compose_file" ]; then
-        echo "ERROR: Compose file not found: $compose_file"
-        exit 1
-    fi
-    setup_clickhouse
-    trap teardown_clickhouse EXIT
-    healthcheck_clickhouse
     if [[ "${storage_test}" == "e2e" ]]; then
         STORAGE=clickhouse make jaeger-v2-storage-integration-test
     elif [[ "${storage_test}" == "compat" ]]; then
@@ -67,18 +58,32 @@ run_integration_test() {
         echo "ERROR: Invalid argument value storage_test=${storage_test}, expecting direct, e2e or compat"
         exit 1
     fi
-    success="true"
 }
 
 main() {
     if [ $# -ne 2 ]; then
-        echo "Usage: $0 <e2e|direct|compat> <lts-march|lts-august>"
+        echo "Usage: $0 <e2e|direct|compat|start|stop> <lts-march|lts-august>"
         exit 1
     fi
     local storage_test=$1
     local clickhouse_version=$2
-    echo "Executing ClickHouse ${storage_test} integration tests (${clickhouse_version})"
-    run_integration_test "${storage_test}" "${clickhouse_version}"
+    compose_file="docker-compose/clickhouse/docker-compose-${clickhouse_version}.yml"
+    if [ ! -f "$compose_file" ]; then
+        echo "ERROR: Compose file not found: $compose_file"
+        exit 1
+    fi
+    case "$storage_test" in
+        start) setup_clickhouse; healthcheck_clickhouse ;;
+        stop) docker compose -f "$compose_file" down ;;
+        direct|e2e|compat)
+            trap teardown_clickhouse EXIT
+            setup_clickhouse
+            healthcheck_clickhouse
+            run_integration_test "$storage_test"
+            success="true"
+            ;;
+        *) echo "Unknown mode: $storage_test"; exit 1 ;;
+    esac
 }
 
 main "$@"

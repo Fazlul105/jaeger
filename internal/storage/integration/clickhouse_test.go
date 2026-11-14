@@ -31,9 +31,7 @@ func (s *ClickHouseStorageIntegration) initialize(t *testing.T, database string,
 	cfg.CreateSchema = true
 	// The compose file runs a single replica with an embedded Keeper, so this suite creates
 	// the schema with the replicated engines, and requireReplicatedTables checks that it did.
-	// The e2e suite creates the local engines through cmd/jaeger/config-clickhouse.yaml; in CI
-	// the two suites run in separate containers, and against one shared server whichever
-	// suite creates the tables first fixes their engine, which the check then reports.
+	// The e2e suite creates local engines, so the two suites need separate databases when sharing a server.
 	cfg.TableEngine = ch.TableEngine{
 		Replicated: configoptional.Some(ch.ReplicatedEngine{
 			KeeperPath:  "/clickhouse/tables/{shard}/{database}/{table}",
@@ -121,7 +119,9 @@ func runClickHouseStorageSuite(t *testing.T, database string, hoistedAttributes 
 }
 
 func TestClickHouseStorage(t *testing.T) {
-	runClickHouseStorageSuite(t, "jaeger", nil)
+	SkipUnlessEnv(t, StorageClickHouse)
+	RecreateClickHouseDatabase(t, "jaeger_direct")
+	runClickHouseStorageSuite(t, "jaeger_direct", nil)
 }
 
 // TestClickHouseStorage_HoistedAttributes runs the same suite against tables with hoisted
