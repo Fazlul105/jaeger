@@ -286,7 +286,7 @@ func TestCalculateProbability(t *testing.T) {
 		{"svcB", http.MethodDelete, 0.0, 0.002, "test 0 qps"},
 	}
 	for _, test := range tests {
-		probability := p.calculateProbability(test.service, test.operation, test.qps, make(map[operationKey]bool))
+		probability := p.calculateProbability(test.service, test.operation, test.qps, make(map[string]bool))
 		assert.InDelta(t, test.expectedProbability, probability, 1e-6, test.errMsg)
 	}
 }
@@ -496,7 +496,7 @@ func TestUsingAdaptiveSampling(t *testing.T) {
 
 func TestAdaptiveHistoryExpiresAfterAnAbsentRound(t *testing.T) {
 	p := &PostAggregator{
-		previousAdaptive:          map[operationKey]bool{{"svc", "op"}: true},
+		previousAdaptive:          map[string]map[string]bool{"svc": {"op": true}},
 		operationsCalculatedGauge: metrics.NullFactory.Gauge(metrics.Options{}),
 	}
 	require.True(t, p.isUsingAdaptiveSampling(0.5, "svc", "op", nil))

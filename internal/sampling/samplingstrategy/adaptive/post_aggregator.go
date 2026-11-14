@@ -25,11 +25,6 @@ const (
 	getThroughputErrMsg = "failed to get throughput from storage"
 )
 
-type operationKey struct {
-	service   string
-	operation string
-}
-
 var (
 	errNonZero                = errors.New("CalculationInterval and AggregationBuckets must be greater than 0")
 	errBucketsForCalculation  = errors.New("BucketsForCalculation cannot be less than 1")
@@ -86,7 +81,7 @@ type PostAggregator struct {
 	probabilityCalculator calculationstrategy.ProbabilityCalculator
 
 	// Operations with a confirmed non-initial adaptive probability in the last calculation.
-	previousAdaptive map[operationKey]bool
+	previousAdaptive map[string]map[string]bool
 
 	shutdown chan struct{}
 
@@ -307,12 +302,14 @@ func (p *PostAggregator) calculateWeightedQPS(allQPS []float64) float64 {
 }
 
 func (p *PostAggregator) calculateProbabilitiesAndQPS() (model.ServiceOperationProbabilities, model.ServiceOperationQPS) {
-	nextAdaptive := make(map[operationKey]bool)
 	retProbabilities := make(model.ServiceOperationProbabilities)
 	retQPS := make(model.ServiceOperationQPS)
 	svcOpQPS := p.throughputToQPS()
+	nextAdaptive := make(map[string]map[string]bool, len(svcOpQPS))
 	totalOperations := int64(0)
 	for svc, opQPS := range svcOpQPS {
+		adaptiveOps := make(map[string]bool, len(opQPS))
+		nextAdaptive[svc] = adaptiveOps
 		if _, ok := retProbabilities[svc]; !ok {
 			retProbabilities[svc] = make(map[string]float64)
 		}
@@ -323,7 +320,7 @@ func (p *PostAggregator) calculateProbabilitiesAndQPS() (model.ServiceOperationP
 			totalOperations++
 			avgQPS := p.calculateWeightedQPS(qps)
 			retQPS[svc][op] = avgQPS
-			retProbabilities[svc][op] = p.calculateProbability(svc, op, avgQPS, nextAdaptive)
+			retProbabilities[svc][op] = p.calculateProbability(svc, op, avgQPS, adaptiveOps)
 		}
 	}
 	p.previousAdaptive = nextAdaptive
@@ -331,7 +328,7 @@ func (p *PostAggregator) calculateProbabilitiesAndQPS() (model.ServiceOperationP
 	return retProbabilities, retQPS
 }
 
-func (p *PostAggregator) calculateProbability(service, operation string, qps float64, nextAdaptive map[operationKey]bool) float64 {
+func (p *PostAggregator) calculateProbability(service, operation string, qps float64, adaptiveOps map[string]bool) float64 {
 	oldProbability := p.InitialSamplingProbability
 	// TODO: is this loop overly expensive?
 	p.mu.RLock()
@@ -345,7 +342,7 @@ func (p *PostAggregator) calculateProbability(service, operation string, qps flo
 
 	usingAdaptiveSampling := p.isUsingAdaptiveSampling(oldProbability, service, operation, latestThroughput)
 	if usingAdaptiveSampling && !FloatEquals(oldProbability, p.InitialSamplingProbability) {
-		nextAdaptive[operationKey{service, operation}] = true
+		adaptiveOps[operation] = true
 	}
 
 	// Short circuit if the qps is close enough to targetQPS or if the service doesn't appear to be using
@@ -397,5 +394,5 @@ func (p *PostAggregator) isUsingAdaptiveSampling(
 	// By this point, we know that there's no recorded throughput for this operation for this round
 	// of calculation. Check the previous bucket to see if this operation was using adaptive sampling
 	// before.
-	return p.previousAdaptive[operationKey{service, operation}]
+	return p.previousAdaptive[service][operation]
 }
