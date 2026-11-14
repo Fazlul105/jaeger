@@ -270,7 +270,6 @@ func TestCalculateProbability(t *testing.T) {
 		probabilities:         probabilities,
 		probabilityCalculator: testCalculator(),
 		throughputs:           throughputs,
-		serviceCache:          []SamplingCache{{"svcA": {}, "svcB": {}}},
 	}
 	tests := []struct {
 		service             string
@@ -287,7 +286,7 @@ func TestCalculateProbability(t *testing.T) {
 		{"svcB", http.MethodDelete, 0.0, 0.002, "test 0 qps"},
 	}
 	for _, test := range tests {
-		probability := p.calculateProbability(test.service, test.operation, test.qps)
+		probability := p.calculateProbability(test.service, test.operation, test.qps, make(map[operationKey]bool))
 		assert.InDelta(t, test.expectedProbability, probability, 1e-6, test.errMsg)
 	}
 }
@@ -495,12 +494,14 @@ func TestUsingAdaptiveSampling(t *testing.T) {
 	}
 }
 
-func TestPrependServiceCache(t *testing.T) {
-	p := &PostAggregator{}
-	for range serviceCacheSize * 2 {
-		p.prependServiceCache()
+func TestAdaptiveHistoryExpiresAfterAnAbsentRound(t *testing.T) {
+	p := &PostAggregator{
+		previousAdaptive:          map[operationKey]bool{{"svc", "op"}: true},
+		operationsCalculatedGauge: metrics.NullFactory.Gauge(metrics.Options{}),
 	}
-	assert.Len(t, p.serviceCache, serviceCacheSize)
+	require.True(t, p.isUsingAdaptiveSampling(0.5, "svc", "op", nil))
+	p.calculateProbabilitiesAndQPS()
+	require.False(t, p.isUsingAdaptiveSampling(0.5, "svc", "op", nil))
 }
 
 func TestCalculateProbabilitiesAndQPSMultiple(t *testing.T) {
@@ -530,7 +531,6 @@ func TestCalculateProbabilitiesAndQPSMultiple(t *testing.T) {
 		throughputs: buckets, probabilities: make(model.ServiceOperationProbabilities),
 		qps: make(model.ServiceOperationQPS), weightVectorCache: NewWeightVectorCache(),
 		probabilityCalculator:     calculationstrategy.NewPercentageIncreaseCappedCalculator(1.0),
-		serviceCache:              []SamplingCache{},
 		operationsCalculatedGauge: metrics.NullFactory.Gauge(metrics.Options{}),
 	}
 
