@@ -1,0 +1,30 @@
+# Copyright (c) 2026 The Jaeger Authors.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Verify adaptive sampling prototype
+on:
+  push:
+    branches: [verify/adaptive-sampling-cache]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [lint, test]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-go
+      - if: matrix.check == 'lint'
+        run: |
+          make fmt
+          git diff --exit-code
+          make lint
+      - if: matrix.check == 'test'
+        run: make test
