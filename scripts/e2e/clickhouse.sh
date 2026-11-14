@@ -48,16 +48,11 @@ teardown_clickhouse() {
 
 run_integration_test() {
     local storage_test=$1
-    if [[ "${storage_test}" == "e2e" ]]; then
-        STORAGE=clickhouse make jaeger-v2-storage-integration-test
-    elif [[ "${storage_test}" == "compat" ]]; then
-        STORAGE=clickhouse make jaeger-v2-backward-compatibility-test
-    elif [[ "${storage_test}" == "direct" ]]; then
-        STORAGE=clickhouse make storage-integration-test
-    else
-        echo "ERROR: Invalid argument value storage_test=${storage_test}, expecting direct, e2e or compat"
-        exit 1
-    fi
+    case "$storage_test" in
+        direct) STORAGE=clickhouse make storage-integration-test ;;
+        e2e) STORAGE=clickhouse make jaeger-v2-storage-integration-test ;;
+        compat) STORAGE=clickhouse make jaeger-v2-backward-compatibility-test ;;
+    esac
 }
 
 main() {
@@ -73,7 +68,10 @@ main() {
         exit 1
     fi
     case "$storage_test" in
-        start) setup_clickhouse; healthcheck_clickhouse ;;
+        start)
+            setup_clickhouse
+            healthcheck_clickhouse
+            ;;
         stop) docker compose -f "$compose_file" down ;;
         direct|e2e|compat)
             trap teardown_clickhouse EXIT
