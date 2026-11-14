@@ -18,13 +18,10 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        storage_test:
-        - e2e
-        - direct
         clickhouse_version:
         - lts-march
         - lts-august
-    name: clickhouse ${{ matrix.storage_test }} ${{ matrix.clickhouse_version }}
+    name: clickhouse ${{ matrix.clickhouse_version }}
     steps:
     - name: Harden Runner
       uses: step-security/harden-runner@46b06cea07f9e64621fdf066ba77ac6915163d43 # v2.22.3
@@ -35,19 +32,46 @@ jobs:
 
     - uses: ./.github/actions/setup-go
 
-    - name: Run ClickHouse integration tests
-      id: test-execution
-      run: bash scripts/e2e/clickhouse.sh ${{ matrix.storage_test }} ${{ matrix.clickhouse_version }}
+    - name: Start ClickHouse
+      id: start
+      run: bash scripts/e2e/clickhouse.sh start ${{ matrix.clickhouse_version }}
+
+    - name: Run direct tests with replicated tables
+      id: direct
+      env:
+        CLICKHOUSE_TEST_DATABASE: jaeger_direct
+      run: |
+        docker exec clickhouse clickhouse-client --user default --password password --query 'CREATE DATABASE jaeger_direct'
+        STORAGE=clickhouse make storage-integration-test
+
+    - name: Upload direct coverage
+      uses: ./.github/actions/upload-codecov
+      with:
+        flag: clickhouse-direct-${{ matrix.clickhouse_version }}
+
+    - name: Run end-to-end tests with local tables
+      id: e2e
+      if: ${{ !cancelled() && steps.start.outcome == 'success' }}
+      run: STORAGE=clickhouse make jaeger-v2-storage-integration-test
 
     - uses: ./.github/actions/verify-metrics-snapshot
-      if: matrix.storage_test == 'e2e'
+      if: ${{ !cancelled() && steps.e2e.outcome == 'success' }}
       with:
         snapshot: metrics_snapshot_clickhouse
         artifact_key: metrics_snapshot_clickhouse_${{ matrix.clickhouse_version }}
 
-    - name: Upload coverage to codecov
+    - name: Upload e2e coverage
+      if: ${{ !cancelled() && steps.e2e.outcome == 'success' }}
       uses: ./.github/actions/upload-codecov
       with:
-        flag: clickhouse-${{ matrix.storage_test }}-${{ matrix.clickhouse_version }}
+        flag: clickhouse-e2e-${{ matrix.clickhouse_version }}
+
+    - name: Dump ClickHouse logs
+      if: failure()
+      run: docker logs clickhouse
+
+    - name: Stop ClickHouse
+      if: always()
+      run: bash scripts/e2e/clickhouse.sh stop ${{ matrix.clickhouse_version }}
 
 

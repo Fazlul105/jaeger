@@ -5,6 +5,7 @@ package integration
 
 import (
 	"context"
+	"os"
 	"testing"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -27,12 +28,13 @@ func (s *ClickHouseStorageIntegration) initialize(t *testing.T) {
 	cfg := ch.DefaultConfiguration()
 	cfg.Addresses = []string{"127.0.0.1:9000"}
 	cfg.Database = "jaeger"
+	if database := os.Getenv("CLICKHOUSE_TEST_DATABASE"); database != "" {
+		cfg.Database = database
+	}
 	cfg.CreateSchema = true
 	// The compose file runs a single replica with an embedded Keeper, so this suite creates
 	// the schema with the replicated engines, and requireReplicatedTables checks that it did.
-	// The e2e suite creates the local engines through cmd/jaeger/config-clickhouse.yaml; in CI
-	// the two suites run in separate containers, and against one shared server whichever
-	// suite creates the tables first fixes their engine, which the check then reports.
+	// The e2e suite creates local engines, so the two suites need separate databases when sharing a server.
 	cfg.TableEngine = ch.TableEngine{
 		Replicated: configoptional.Some(ch.ReplicatedEngine{
 			KeeperPath:  "/clickhouse/tables/{shard}/{database}/{table}",
