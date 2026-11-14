@@ -1,0 +1,31 @@
+name: Verify Cassandra lock contribution
+on:
+  push:
+    branches: [verify/cassandra-lock-integration]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    strategy:
+      fail-fast: false
+      matrix:
+        check: [format-and-lint, unit-tests, cassandra-4, cassandra-5]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-go
+      - if: matrix.check == 'format-and-lint'
+        run: |
+          make fmt
+          git diff --exit-code
+          make lint
+      - if: matrix.check == 'unit-tests'
+        run: make test
+      - if: matrix.check == 'cassandra-4'
+        run: bash scripts/e2e/cassandra.sh 4.x v004 direct
+      - if: matrix.check == 'cassandra-5'
+        run: bash scripts/e2e/cassandra.sh 5.x v004 direct
