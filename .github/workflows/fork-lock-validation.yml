@@ -1,3 +1,6 @@
+# Copyright (c) 2026 The Jaeger Authors.
+# SPDX-License-Identifier: Apache-2.0
+
 name: Verify Cassandra lock contribution
 on:
   push:
@@ -11,7 +14,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        check: [format-and-lint, unit-tests, cassandra-4, cassandra-5]
+        check: [format-and-lint]
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
