@@ -1,0 +1,47 @@
+# Copyright (c) 2026 The Jaeger Authors.
+# SPDX-License-Identifier: Apache-2.0
+
+name: Measure ClickHouse shared setup
+on:
+  push:
+    branches: [verify/clickhouse-shared-setup]
+permissions:
+  contents: read
+jobs:
+  measure:
+    runs-on: ubuntu-latest
+    timeout-minutes: 50
+    strategy:
+      fail-fast: false
+      matrix:
+        layout: [separate-direct, separate-e2e, shared]
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - uses: ./.github/actions/setup-go
+      - name: Pull image
+        run: docker compose -f docker-compose/clickhouse/docker-compose-lts-august.yml pull
+      - name: Start storage
+        id: start
+        run: bash scripts/e2e/clickhouse.sh start lts-august
+      - name: Direct tests
+        if: matrix.layout != 'separate-e2e'
+        env:
+          CLICKHOUSE_TEST_DATABASE: ${{ matrix.layout == 'shared' && 'jaeger_direct' || 'jaeger' }}
+        run: |
+          if [[ "$CLICKHOUSE_TEST_DATABASE" == "jaeger_direct" ]]; then
+            docker exec clickhouse clickhouse-client --user default --password password --query 'CREATE DATABASE jaeger_direct'
+          fi
+          STORAGE=clickhouse make storage-integration-test
+          test -s .cover/cover.out
+          mv .cover/cover.out .cover/direct.out
+      - name: End-to-end tests
+        if: ${{ !cancelled() && steps.start.outcome == 'success' && matrix.layout != 'separate-direct' }}
+        run: |
+          STORAGE=clickhouse make jaeger-v2-storage-integration-test
+          test -s .cover/cover.out && test -s .metrics/metrics_snapshot_clickhouse.txt
+      - name: Stop storage
+        if: always()
+        run: bash scripts/e2e/clickhouse.sh stop lts-august
